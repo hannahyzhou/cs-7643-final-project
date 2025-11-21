@@ -4,7 +4,8 @@ from typing import List, Tuple
 
 import pandas as pd
 import torch
-import torch_directml
+# TODO: comment out on non-Windows devices
+# import torch_directml 
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 import sys
@@ -21,9 +22,11 @@ try:
         DEVICE = torch.device("cuda")
         print("Using CUDA device:", torch.cuda.get_device_name(0))
     else:
-        import torch_directml
-        DEVICE = torch_directml.device()
-        print("Using DirectML device (AMD/Intel/Nvidia via DirectX).")
+        # TODO: comment out on non-Windows devices
+        # import torch_directml
+        # DEVICE = torch_directml.device()
+        # print("Using DirectML device (AMD/Intel/Nvidia via DirectX).")
+        print("Not using gpu")
 except ImportError:
     DEVICE = torch.device("cpu")
     print("No GPU backend found (CUDA/DirectML). Using CPU.")
@@ -39,7 +42,7 @@ DIM_FF = 512
 DROPOUT = 0.1
 
 NUM_EPOCHS = 20
-LR = 1e-4
+LR = 1e-3
 
 class GPTStyleDataset(Dataset):
     """
@@ -194,9 +197,11 @@ def greedy_generate(model: GPTStyleTransformerLM, vocab: Vocab,
     return text
 
 def main(model_type):
-    print("Loading dataset...")
-    df = pd.read_csv(DATA_PATH)
+    print("Loading dataset from Hugging Face...")
+    df = pd.read_csv("hf://datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv")
+    # Keep only the two columns your model expects
     df = df[["instruction", "response"]].dropna().reset_index(drop=True)
+
 
     print("Building vocabulary...")
     all_texts = df["instruction"].astype(str).tolist() + df["response"].astype(str).tolist()
@@ -355,15 +360,39 @@ def chat(model, vocab, max_new_tokens= 50):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "2":
-        model_type = 2
-    elif len(sys.argv) > 1 and sys.argv[1] == "3":
-        model_type = 3
-    else:
-        model_type = 1
-    # Train the GPT-style LM
-    # main(model_type)
+    """
+    Usage:
+      # Train model type 1 (GPTStyleTransformerLM)
+      python customer_service_chatbot.py train 1
 
-    # After training, you could do (in a separate script or REPL):
-    model, vocab = load_model_for_inference("gpt_style_customer_service_bot.pt", model_type)
-    chat(model, vocab, max_new_tokens=50)
+      # Train model type 2 (GPT2StyleTransformerLM)
+      python customer_service_chatbot.py train 2
+
+      # Train model type 3 (SmallDecoderSeq2SeqTransformerLM)
+      python customer_service_chatbot.py train 3
+
+      # Chat with a trained model type 1
+      python customer_service_chatbot.py chat 1
+
+      # Chat with a trained model type 2
+      python customer_service_chatbot.py chat 2
+
+      # Chat with a trained model type 3
+      python customer_service_chatbot.py chat 3
+    """
+    if len(sys.argv) < 2:
+        print("Usage: python customer_service_chatbot.py [train|chat] [1|2|3]")
+        sys.exit(1)
+
+    mode = sys.argv[1].lower()
+    model_type = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+
+    if mode == "train":
+        main(model_type)
+    elif mode == "chat":
+        ckpt_path = "gpt_style_customer_service_bot.pt"
+        model, vocab = load_model_for_inference(ckpt_path, model_type)
+        chat(model, vocab, max_new_tokens=100)
+    else:
+        print("Unknown mode. Use 'train' or 'chat'.")
+        sys.exit(1)

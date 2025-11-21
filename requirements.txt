@@ -1,0 +1,6 @@
+numpy
+pandas
+torch
+# Only need torch_directml on Windows computers
+# torch_directml
+huggingface_hub
