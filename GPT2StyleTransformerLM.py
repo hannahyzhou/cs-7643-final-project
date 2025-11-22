@@ -17,17 +17,7 @@ class GPTStyle2TransformerLM(nn.Module):
       <bos> instruction <sep> response <eos>
     """
 
-    def __init__(
-        self,
-        vocab_size: int,
-        d_model: int,
-        nhead: int,
-        num_layers: int,
-        dim_feedforward: int,
-        dropout: float,
-        pad_idx: int,
-        max_seq_len: int = 2048,
-    ):
+    def __init__(self, vocab_size, d_model, nhead, num_layers, dim_feedforward, dropout, pad_idx,max_seq_len = 2048):
         super().__init__()
 
         self.d_model = d_model
