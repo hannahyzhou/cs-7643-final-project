@@ -4,19 +4,6 @@ import torch.nn as nn
 from GPT2Block import GPT2Block
 
 class GPTStyle2TransformerLM(nn.Module):
-    """
-    GPT-2 style decoder-only Transformer language model.
-
-    Architecture:
-      - Token embedding + learned positional embedding
-      - N x GPT2Block (masked self-attention + MLP)
-      - Final LayerNorm
-      - LM head (tied weights with token embedding)
-
-    Trained as a causal LM on sequences:
-      <bos> instruction <sep> response <eos>
-    """
-
     def __init__(self, vocab_size, d_model, nhead, num_layers, dim_feedforward, dropout, pad_idx,max_seq_len = 2048):
         super().__init__()
 
@@ -44,20 +31,10 @@ class GPTStyle2TransformerLM(nn.Module):
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
         self.lm_head.weight = self.token_embedding.weight
 
-    def _make_key_padding_mask(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: (batch, seq_len)
-        Returns boolean mask: True where positions are padding.
-        """
+    def _make_key_padding_mask(self, x):
         return (x == self.pad_idx)
 
-    def _generate_causal_mask(self, seq_len: int, device) -> torch.Tensor:
-        """
-        Causal mask of shape (seq_len, seq_len) with -inf on future positions.
-
-        This is used as attn_mask for MultiheadAttention so that
-        token at position t cannot attend to positions > t.
-        """
+    def _generate_causal_mask(self, seq_len: int, device):
         mask = torch.triu(
             torch.ones(seq_len, seq_len, device=device), diagonal=1
         )
@@ -65,12 +42,7 @@ class GPTStyle2TransformerLM(nn.Module):
         mask = mask.masked_fill(mask == 1, float("-inf"))
         return mask
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: (batch, seq_len) of token ids
-        Returns:
-            logits: (batch, seq_len, vocab_size)
-        """
+    def forward(self, x: torch.Tensor):
         key_padding_mask = self._make_key_padding_mask(x)
 
         batch_size, seq_len = x.size()

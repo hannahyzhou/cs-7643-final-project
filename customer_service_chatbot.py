@@ -43,11 +43,6 @@ NUM_EPOCHS = 5
 LR = 1e-4
 
 def collate_fn(batch, pad_idx):
-    """
-    batch: list of 1D tensors (seq_len_i)
-    Returns:
-        x: (batch, max_len) padded
-    """
     lengths = [len(seq) for seq in batch]
     max_len = max(lengths)
 
@@ -117,10 +112,6 @@ def evaluate(model, dataloader, criterion, pad_idx: int):
     return total_loss / max(total_tokens, 1)
 
 def generate_response(model, vocab, instruction, max_new_tokens = 50):
-    """
-    Given an instruction string, generate a response:
-        <bos> instr <sep> [generated response tokens] <eos>
-    """
     model.eval()
 
     instr_ids = vocab.numericalize(instruction, add_bos_eos=False)
@@ -209,7 +200,7 @@ def main(model_type):
             d_model=D_MODEL,
             nhead=NHEAD,
             num_encoder_layers=NUM_LAYERS,
-            num_decoder_layers=2,  # Small decoder
+            num_decoder_layers=2,
             dim_feedforward=DIM_FF,
             dropout=DROPOUT,
             pad_idx=vocab.pad_idx(),

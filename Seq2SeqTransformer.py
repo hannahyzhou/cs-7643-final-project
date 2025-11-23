@@ -5,16 +5,6 @@ from PositionalEncoding import PositionalEncoding
 
 
 class Seq2SeqTransformer(nn.Module):
-    """
-    Encoder–decoder Transformer LM with a *small* decoder.
-
-    Intended to underperform your GPT-style decoder-only models:
-      - Full encoder stack
-      - Shallow decoder stack (e.g., 2 layers)
-      - Trained with the same next-token objective on
-        <bos> instruction <sep> response <eos> sequences.
-    """
-
     def __init__(self, vocab_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, dropout, pad_idx):
         super().__init__()
         self.d_model = d_model
@@ -51,50 +41,23 @@ class Seq2SeqTransformer(nn.Module):
 
         self.generator = nn.Linear(d_model, vocab_size)
 
-    def make_key_padding_mask(self, x):
-        """
-        x: (batch, seq_len)
-        Returns boolean mask (batch, seq_len) where True marks padding.
-        """
-        return x == self.pad_idx
-
-    def generate_mask(self, seq_len, device):
-        """
-        Standard causal mask for decoder self-attention:
-        shape (seq_len, seq_len) with -inf on future positions.
-        """
-        mask = torch.triu(
-            torch.ones(seq_len, seq_len, device=device), diagonal=1
-        )
-        mask = mask.masked_fill(mask == 1, float("-inf"))
+    def get_mask(self, seq_len, device):
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=device) == 1, diagonal=1)
+        mask = mask.float().masked_fill(mask, float("-inf"))
         return mask
 
     def forward(self, x: torch.Tensor):
-        """
-        x: (batch, seq_len) token ids
-        Returns:
-            logits: (batch, seq_len, vocab_size)
+        key_padding_mask = (x == self.pad_idx)
 
-        We treat the *same* sequence as both source and target:
-          - Encoder sees the whole sequence (with padding mask).
-          - Small decoder does causal self-attention and cross-attn
-            to encoder memory to predict the next token.
+        x = x.transpose(0, 1)
 
-        This keeps the interface compatible with your training loop:
-            logits = model(input_ids)
-        """
-        key_padding_mask = self.make_key_padding_mask(x)
-
-        x_t = x.transpose(0, 1)
-
-        emb = self.token_embedding(x_t) * math.sqrt(self.d_model)
-        emb = self.pos_encoding(emb)
+        emb = self.pos_encoding(self.token_embedding(x) * math.sqrt(self.d_model))
 
         src = emb
         tgt = emb
 
         seq_len = tgt.size(0)
-        tgt_mask = self.generate_mask(seq_len, tgt.device)
+        tgt_mask = self.get_mask(seq_len, tgt.device)
 
         memory = self.encoder(
             src,

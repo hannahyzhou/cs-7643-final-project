@@ -17,9 +17,6 @@ class PositionalEncoding(nn.Module):
         self.register_buffer("pe", pe)
 
     def forward(self, x):
-        """
-        x: (seq_len, batch, d_model)
-        """
         seq_len = x.size(0)
         x = x + self.pe[:seq_len]
         return self.dropout(x)

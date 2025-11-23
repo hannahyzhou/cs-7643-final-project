@@ -4,11 +4,6 @@ from torch.utils.data import Dataset
 from Vocab import Vocab
 
 class GPTStyleDataset(Dataset):
-    """
-    Each example: <bos> instruction <sep> response <eos>
-    We train next-token prediction over this whole sequence.
-    """
-
     def __init__(self, df, vocab, max_len=128):
         self.df = df.reset_index(drop=True)
         self.vocab = vocab

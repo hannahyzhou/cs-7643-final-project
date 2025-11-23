@@ -3,14 +3,7 @@ import torch
 import torch.nn as nn
 
 class GPT2Block(nn.Module):
-    """
-    Single GPT-2 style Transformer block:
-
-    - LayerNorm -> masked multi-head self-attention -> residual
-    - LayerNorm -> MLP (GELU) -> residual
-    """
-
-    def __init__(self, d_model: int, nhead: int, dim_ff: int, dropout: float):
+    def __init__(self, d_model, nhead, dim_ff, dropout):
         super().__init__()
         self.ln_1 = nn.LayerNorm(d_model)
         self.ln_2 = nn.LayerNorm(d_model)
@@ -31,17 +24,7 @@ class GPT2Block(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        attn_mask: torch.Tensor = None,
-        key_padding_mask: torch.Tensor = None,
-    ) -> torch.Tensor:
-        """
-        x: (batch, seq_len, d_model)
-        attn_mask: (seq_len, seq_len) causal mask
-        key_padding_mask: (batch, seq_len) bool mask for padding tokens
-        """
+    def forward(self, x, attn_mask = None, key_padding_mask = None):
         residual = x
         x = self.ln_1(x)
         attn_out, _ = self.attn(
