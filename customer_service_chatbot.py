@@ -30,7 +30,7 @@ except ImportError:
     print("No GPU backend found (CUDA/DirectML). Using CPU.")
 
 BATCH_SIZE = 64
-MAX_SEQ_LEN = 128
+MAX_SEQ_LEN = 200
 MIN_FREQ = 2
 
 D_MODEL = 256
@@ -111,7 +111,7 @@ def evaluate(model, dataloader, criterion, pad_idx: int):
 
     return total_loss / max(total_tokens, 1)
 
-def generate_response(model, vocab, instruction, max_new_tokens = 50):
+def generate_response(model, vocab, instruction, max_new_tokens = 500):
     model.eval()
 
     instr_ids = vocab.numericalize(instruction, add_bos_eos=False)
@@ -194,6 +194,7 @@ def main(model_type):
             pad_idx=vocab.pad_idx(),
             max_seq_len=MAX_SEQ_LEN,
         ).to(DEVICE)
+        path = "gpt2_style_customer_service_bot.pt"
     elif model_type == 3:
         model = Seq2SeqTransformer(
             vocab_size=len(vocab.itos),
@@ -205,6 +206,7 @@ def main(model_type):
             dropout=DROPOUT,
             pad_idx=vocab.pad_idx(),
         ).to(DEVICE)
+        path = "seq2seq_customer_service_bot.pt"
     else:
         model = GPTStyleTransformerLM(
             vocab_size=len(vocab.itos),
@@ -215,6 +217,7 @@ def main(model_type):
             dropout=DROPOUT,
             pad_idx=vocab.pad_idx(),
         ).to(DEVICE)
+        path = "gpt_style_customer_service_bot.pt"
 
     criterion = nn.CrossEntropyLoss(ignore_index=vocab.pad_idx())
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
@@ -249,7 +252,7 @@ def main(model_type):
                     "pad_idx": vocab.pad_idx(),
                     "max_seq_len": MAX_SEQ_LEN,
                 }
-            }, "gpt_style_customer_service_bot.pt")
+            }, path)
             print("  -> Saved new best model.")
 
     print("Training complete.")
@@ -320,6 +323,12 @@ if __name__ == "__main__":
     # Train the GPT-style LM
     # main(model_type)
 
-    # After training, you could do (in a separate script or REPL):
-    model, vocab = load_model_for_inference("gpt_style_customer_service_bot.pt", model_type)
-    chat(model, vocab, max_new_tokens=50)
+    # # After training, you could do (in a separate script or REPL):
+    if model_type == 3:
+        path = "seq2seq_customer_service_bot.pt"
+    elif model_type == 2:
+        path = "gpt2_style_customer_service_bot.pt"
+    else:
+        path = "gpt_style_customer_service_bot.pt"
+    model, vocab = load_model_for_inference(path, model_type)
+    chat(model, vocab, max_new_tokens=750)
