@@ -37,7 +37,7 @@ NUM_LAYERS = 6
 DIM_FF = 512
 DROPOUT = 0.1
 
-NUM_EPOCHS = 5
+NUM_EPOCHS = 50
 LR = 1e-4
 
 def collate_fn(batch, pad_idx):
