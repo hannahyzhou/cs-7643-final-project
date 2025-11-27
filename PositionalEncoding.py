@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -16,10 +16,7 @@ class PositionalEncoding(nn.Module):
         pe = pe.unsqueeze(1)
         self.register_buffer("pe", pe)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: (seq_len, batch, d_model)
-        """
+    def forward(self, x):
         seq_len = x.size(0)
         x = x + self.pe[:seq_len]
         return self.dropout(x)

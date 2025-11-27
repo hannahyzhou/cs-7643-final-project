@@ -1,6 +1,5 @@
-import math
 import time
-from typing import List, Tuple
+from typing import List
 
 import pandas as pd
 import torch
@@ -12,8 +11,8 @@ import sys
 
 from Vocab import Vocab
 from GPTStyleTransformerLM import GPTStyleTransformerLM
-from GPT2StyleTransformerLM import GPTStyle2TransformerLM
-from SmallDecoderSeq2SeqTransformerLM import SmallDecoderSeq2SeqTransformerLM
+from Seq2SeqTransformer import Seq2SeqTransformer
+from GPTStyleDataset import GPTStyleDataset
 
 DATA_PATH = "Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv"
 
@@ -32,7 +31,7 @@ except ImportError:
     print("No GPU backend found (CUDA/DirectML). Using CPU.")
 
 BATCH_SIZE = 64
-MAX_SEQ_LEN = 128
+MAX_SEQ_LEN = 200
 MIN_FREQ = 2
 
 D_MODEL = 256
@@ -44,40 +43,7 @@ DROPOUT = 0.1
 NUM_EPOCHS = 20
 LR = 1e-3
 
-class GPTStyleDataset(Dataset):
-    """
-    Each example: <bos> instruction <sep> response <eos>
-    We train next-token prediction over this whole sequence.
-    """
-
-    def __init__(self, df: pd.DataFrame, vocab: Vocab, max_len: int = 128):
-        self.df = df.reset_index(drop=True)
-        self.vocab = vocab
-        self.max_len = max_len
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        instr_text = str(row["instruction"])
-        resp_text = str(row["response"])
-
-        instr_ids = self.vocab.numericalize(instr_text, add_bos_eos=False)
-        resp_ids = self.vocab.numericalize(resp_text, add_bos_eos=False)
-
-        ids = [self.vocab.bos_idx] + instr_ids + [self.vocab.sep_idx] + resp_ids + [self.vocab.eos_idx]
-        ids = ids[:self.max_len]
-
-        return torch.tensor(ids, dtype=torch.long)
-
-
-def collate_fn(batch, pad_idx: int):
-    """
-    batch: list of 1D tensors (seq_len_i)
-    Returns:
-        x: (batch, max_len) padded
-    """
+def collate_fn(batch, pad_idx):
     lengths = [len(seq) for seq in batch]
     max_len = max(lengths)
 
@@ -120,7 +86,6 @@ def train_epoch(model, dataloader, optimizer, criterion, pad_idx: int):
     return total_loss / max(total_tokens, 1)
 
 
-@torch.no_grad()
 def evaluate(model, dataloader, criterion, pad_idx: int):
     model.eval()
     total_loss = 0.0
@@ -147,17 +112,11 @@ def evaluate(model, dataloader, criterion, pad_idx: int):
 
     return total_loss / max(total_tokens, 1)
 
-@torch.no_grad()
-def greedy_generate(model: GPTStyleTransformerLM, vocab: Vocab,
-                    instruction: str, max_new_tokens: int = 50) -> str:
-    """
-    Given an instruction string, generate a response:
-        <bos> instr <sep> [generated response tokens] <eos>
-    """
+def generate_response(model, vocab, instruction, max_new_tokens = 500):
     model.eval()
 
     instr_ids = vocab.numericalize(instruction, add_bos_eos=False)
-    input_ids = [vocab.bos_idx] + instr_ids + [vocab.sep_idx]
+    input_ids = [vocab.bos_idx()] + instr_ids + [vocab.sep_idx()]
 
     if len(input_ids) >= MAX_SEQ_LEN - 1:
         input_ids = input_ids[:MAX_SEQ_LEN - 1]
@@ -172,20 +131,20 @@ def greedy_generate(model: GPTStyleTransformerLM, vocab: Vocab,
         next_token_logits = logits[0, -1, :]
 
         if step == 0:
-            next_token_logits[vocab.eos_idx] = float("-inf")
+            next_token_logits[vocab.eos_idx()] = float("-inf")
 
         next_token_id = torch.argmax(next_token_logits).item()
 
         next_token = torch.tensor([[next_token_id]], dtype=torch.long, device=DEVICE)
         x = torch.cat([x, next_token], dim=1)
 
-        if next_token_id == vocab.eos_idx:
+        if next_token_id == vocab.eos_idx():
             break
 
     generated_ids = x[0].tolist()
 
-    if vocab.sep_idx in generated_ids:
-        sep_pos = generated_ids.index(vocab.sep_idx)
+    if vocab.sep_idx() in generated_ids:
+        sep_pos = generated_ids.index(vocab.sep_idx())
         response_ids = generated_ids[sep_pos + 1:]
     else:
         response_ids = generated_ids[1:]
@@ -218,37 +177,26 @@ def main(model_type):
         train_ds,
         batch_size=BATCH_SIZE,
         shuffle=True,
-        collate_fn=lambda b: collate_fn(b, vocab.pad_idx),
+        collate_fn=lambda b: collate_fn(b, vocab.pad_idx()),
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=BATCH_SIZE,
         shuffle=False,
-        collate_fn=lambda b: collate_fn(b, vocab.pad_idx),
+        collate_fn=lambda b: collate_fn(b, vocab.pad_idx()),
     )
-
-    if model_type == 2:
-        model = GPTStyle2TransformerLM(
-            vocab_size=len(vocab.itos),
-            d_model=D_MODEL,
-            nhead=NHEAD,
-            num_layers=NUM_LAYERS,
-            dim_feedforward=DIM_FF,
-            dropout=DROPOUT,
-            pad_idx=vocab.pad_idx,
-            max_seq_len=MAX_SEQ_LEN,
-        ).to(DEVICE)
-    elif model_type == 3:
-        model = SmallDecoderSeq2SeqTransformerLM(
+    if model_type == 1:
+        model = Seq2SeqTransformer(
             vocab_size=len(vocab.itos),
             d_model=D_MODEL,
             nhead=NHEAD,
             num_encoder_layers=NUM_LAYERS,
-            num_decoder_layers=2,  # Small decoder
+            num_decoder_layers=2,
             dim_feedforward=DIM_FF,
             dropout=DROPOUT,
-            pad_idx=vocab.pad_idx,
+            pad_idx=vocab.pad_idx(),
         ).to(DEVICE)
+        path = "seq2seq_customer_service_bot.pt"
     else:
         model = GPTStyleTransformerLM(
             vocab_size=len(vocab.itos),
@@ -257,10 +205,11 @@ def main(model_type):
             num_layers=NUM_LAYERS,
             dim_feedforward=DIM_FF,
             dropout=DROPOUT,
-            pad_idx=vocab.pad_idx,
+            pad_idx=vocab.pad_idx(),
         ).to(DEVICE)
+        path = "gpt_style_customer_service_bot.pt"
 
-    criterion = nn.CrossEntropyLoss(ignore_index=vocab.pad_idx)
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab.pad_idx())
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     print("Starting training...")
@@ -268,8 +217,8 @@ def main(model_type):
 
     for epoch in range(1, NUM_EPOCHS + 1):
         start = time.time()
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, vocab.pad_idx)
-        val_loss = evaluate(model, val_loader, criterion, vocab.pad_idx)
+        train_loss = train_epoch(model, train_loader, optimizer, criterion, vocab.pad_idx())
+        val_loss = evaluate(model, val_loader, criterion, vocab.pad_idx())
         elapsed = time.time() - start
 
         print(
@@ -290,20 +239,15 @@ def main(model_type):
                     "num_layers": NUM_LAYERS,
                     "dim_feedforward": DIM_FF,
                     "dropout": DROPOUT,
-                    "pad_idx": vocab.pad_idx,
+                    "pad_idx": vocab.pad_idx(),
                     "max_seq_len": MAX_SEQ_LEN,
                 }
-            }, "gpt_style_customer_service_bot.pt")
+            }, path)
             print("  -> Saved new best model.")
 
     print("Training complete.")
 
-
-# -----------------------
-# 9. Inference Helpers
-# -----------------------
-
-def load_model_for_inference(checkpoint_path, model_type) -> Tuple[GPTStyleTransformerLM, Vocab]:
+def load_model_for_inference(checkpoint_path, model_type):
     ckpt = torch.load(checkpoint_path, map_location=DEVICE)
     itos = ckpt["vocab"]
     vocab = Vocab()
@@ -312,24 +256,13 @@ def load_model_for_inference(checkpoint_path, model_type) -> Tuple[GPTStyleTrans
 
     config = ckpt["config"]
 
-    if model_type == 2:
-        model = GPTStyle2TransformerLM(
-            vocab_size=len(vocab.itos),
-            d_model=config["d_model"],
-            nhead=config["nhead"],
-            num_layers=config["num_layers"],
-            dim_feedforward=config["dim_feedforward"],
-            dropout=config["dropout"],
-            pad_idx=config["pad_idx"],
-            max_seq_len=config.get("max_seq_len", 2048),
-        ).to(DEVICE)
-    elif model_type == 3:
-        model = SmallDecoderSeq2SeqTransformerLM(
+    if model_type == 1:
+        model = Seq2SeqTransformer(
             vocab_size=len(vocab.itos),
             d_model=config["d_model"],
             nhead=config["nhead"],
             num_encoder_layers=config["num_layers"],
-            num_decoder_layers=2,  # Small decoder
+            num_decoder_layers=2,
             dim_feedforward=config["dim_feedforward"],
             dropout=config["dropout"],
             pad_idx=config["pad_idx"],
@@ -355,44 +288,22 @@ def chat(model, vocab, max_new_tokens= 50):
         user_input = input("Customer: ").strip()
         if user_input.lower() in ("exit", "quit"):
             break
-        reply = greedy_generate(model, vocab, user_input, max_new_tokens=max_new_tokens)
+        reply = generate_response(model, vocab, user_input, max_new_tokens=max_new_tokens)
         print(f"Agent: {reply}")
 
 
 if __name__ == "__main__":
-    """
-    Usage:
-      # Train model type 1 (GPTStyleTransformerLM)
-      python customer_service_chatbot.py train 1
-
-      # Train model type 2 (GPT2StyleTransformerLM)
-      python customer_service_chatbot.py train 2
-
-      # Train model type 3 (SmallDecoderSeq2SeqTransformerLM)
-      python customer_service_chatbot.py train 3
-
-      # Chat with a trained model type 1
-      python customer_service_chatbot.py chat 1
-
-      # Chat with a trained model type 2
-      python customer_service_chatbot.py chat 2
-
-      # Chat with a trained model type 3
-      python customer_service_chatbot.py chat 3
-    """
-    if len(sys.argv) < 2:
-        print("Usage: python customer_service_chatbot.py [train|chat] [1|2|3]")
-        sys.exit(1)
-
-    mode = sys.argv[1].lower()
-    model_type = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-
-    if mode == "train":
-        main(model_type)
-    elif mode == "chat":
-        ckpt_path = "gpt_style_customer_service_bot.pt"
-        model, vocab = load_model_for_inference(ckpt_path, model_type)
-        chat(model, vocab, max_new_tokens=100)
+    if len(sys.argv) > 1 and sys.argv[1] == "1":
+        model_type = 1
     else:
-        print("Unknown mode. Use 'train' or 'chat'.")
-        sys.exit(1)
+        model_type = 0
+    # Train the GPT-style LM
+    # main(model_type)
+
+    # # After training, you could do (in a separate script or REPL):
+    if model_type == 1:
+        path = "seq2seq_customer_service_bot.pt"
+    else:
+        path = "gpt_style_customer_service_bot.pt"
+    model, vocab = load_model_for_inference(path, model_type)
+    chat(model, vocab, max_new_tokens=750)
