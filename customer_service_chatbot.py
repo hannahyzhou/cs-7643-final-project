@@ -1,6 +1,5 @@
-import math
 import time
-from typing import List, Tuple
+from typing import List
 
 import pandas as pd
 import torch
@@ -11,7 +10,6 @@ import sys
 
 from Vocab import Vocab
 from GPTStyleTransformerLM import GPTStyleTransformerLM
-from GPT2StyleTransformerLM import GPTStyle2TransformerLM
 from Seq2SeqTransformer import Seq2SeqTransformer
 from GPTStyleDataset import GPTStyleDataset
 
@@ -182,20 +180,7 @@ def main(model_type):
         shuffle=False,
         collate_fn=lambda b: collate_fn(b, vocab.pad_idx()),
     )
-
-    if model_type == 2:
-        model = GPTStyle2TransformerLM(
-            vocab_size=len(vocab.itos),
-            d_model=D_MODEL,
-            nhead=NHEAD,
-            num_layers=NUM_LAYERS,
-            dim_feedforward=DIM_FF,
-            dropout=DROPOUT,
-            pad_idx=vocab.pad_idx(),
-            max_seq_len=MAX_SEQ_LEN,
-        ).to(DEVICE)
-        path = "gpt2_style_customer_service_bot.pt"
-    elif model_type == 3:
+    if model_type == 1:
         model = Seq2SeqTransformer(
             vocab_size=len(vocab.itos),
             d_model=D_MODEL,
@@ -266,18 +251,7 @@ def load_model_for_inference(checkpoint_path, model_type):
 
     config = ckpt["config"]
 
-    if model_type == 2:
-        model = GPTStyle2TransformerLM(
-            vocab_size=len(vocab.itos),
-            d_model=config["d_model"],
-            nhead=config["nhead"],
-            num_layers=config["num_layers"],
-            dim_feedforward=config["dim_feedforward"],
-            dropout=config["dropout"],
-            pad_idx=config["pad_idx"],
-            max_seq_len=config.get("max_seq_len", 2048),
-        ).to(DEVICE)
-    elif model_type == 3:
+    if model_type == 1:
         model = Seq2SeqTransformer(
             vocab_size=len(vocab.itos),
             d_model=config["d_model"],
@@ -314,20 +288,16 @@ def chat(model, vocab, max_new_tokens= 50):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "2":
-        model_type = 2
-    elif len(sys.argv) > 1 and sys.argv[1] == "3":
-        model_type = 3
-    else:
+    if len(sys.argv) > 1 and sys.argv[1] == "1":
         model_type = 1
+    else:
+        model_type = 0
     # Train the GPT-style LM
     # main(model_type)
 
     # # After training, you could do (in a separate script or REPL):
-    if model_type == 3:
+    if model_type == 1:
         path = "seq2seq_customer_service_bot.pt"
-    elif model_type == 2:
-        path = "gpt2_style_customer_service_bot.pt"
     else:
         path = "gpt_style_customer_service_bot.pt"
     model, vocab = load_model_for_inference(path, model_type)
