@@ -3,6 +3,7 @@ from typing import List
 
 import pandas as pd
 import torch
+import matplotlib.pyplot as plt
 # TODO: comment out on non-Windows devices
 # import torch_directml 
 import torch.nn as nn
@@ -25,6 +26,7 @@ try:
         # import torch_directml
         # DEVICE = torch_directml.device()
         # print("Using DirectML device (AMD/Intel/Nvidia via DirectX).")
+        DEVICE = torch.device("cpu")
         print("Not using gpu")
 except ImportError:
     DEVICE = torch.device("cpu")
@@ -44,23 +46,35 @@ NUM_EPOCHS = 20
 LR = 1e-3
 
 def collate_fn(batch, pad_idx):
+    """
+    Returns batch with all sequences being the same length, with shorter sequences using <PAD> tokens to fill in the space.
+    """
+    # list of sequence lengths
     lengths = [len(seq) for seq in batch]
+    # maximum sequence length in the batch
     max_len = max(lengths)
 
-    padded = torch.full((len(batch), max_len), pad_idx, dtype=torch.long)
+    # fill a 2d tensor with pad_idxes
+    padded = torch.full((len(batch), max_len), pad_idx, dtype=torch.long) # shape: (batch_size, max sequence length)
     for i, seq in enumerate(batch):
+        # iterate through each sequence in the batch and copy over sequence to padded; if shorter than max length, the rest of the tokens are pad
         padded[i, :len(seq)] = seq
 
     return padded
 
 
 def train_epoch(model, dataloader, optimizer, criterion, pad_idx: int):
+    """
+    Runs one epoch of training:
+        1. 
+    """
     model.train()
     total_loss = 0.0
     total_tokens = 0
 
+    # Iterate through each minibatch
     for x in dataloader:
-        x = x.to(DEVICE)
+        x = x.to(DEVICE) # shape (batch_size, max seq len from batch)
 
         input_ids = x[:, :-1]
         target_ids = x[:, 1:]
@@ -156,23 +170,29 @@ def generate_response(model, vocab, instruction, max_new_tokens = 500):
     return text
 
 def main(model_type):
+    """
+    Runs the following steps:
+        1. Loads the dataset from HF
+        2. Builds the Vocabulary
+        3. 
+    """
     print("Loading dataset from Hugging Face...")
     df = pd.read_csv("hf://datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv")
-    # Keep only the two columns your model expects
+    # Keep only the two columns model expects
     df = df[["instruction", "response"]].dropna().reset_index(drop=True)
-
-
     print("Building vocabulary...")
     all_texts = df["instruction"].astype(str).tolist() + df["response"].astype(str).tolist()
     vocab = Vocab(min_freq=MIN_FREQ)
     vocab.build(all_texts)
     print(f"Vocab size: {len(vocab.itos)}")
 
+    # Create GPT-Style Dataset (combine instruction and response) and split into training and validation sets
     dataset = GPTStyleDataset(df, vocab=vocab, max_len=MAX_SEQ_LEN)
     val_size = int(0.1 * len(dataset))
     train_size = len(dataset) - val_size
     train_ds, val_ds = random_split(dataset, [train_size, val_size])
-
+    
+    # Create train/validation DataLoader objects, use collate_fn to pad sequences in a batch
     train_loader = DataLoader(
         train_ds,
         batch_size=BATCH_SIZE,
@@ -185,6 +205,8 @@ def main(model_type):
         shuffle=False,
         collate_fn=lambda b: collate_fn(b, vocab.pad_idx()),
     )
+
+    # Create model
     if model_type == 1:
         model = Seq2SeqTransformer(
             vocab_size=len(vocab.itos),
@@ -214,12 +236,15 @@ def main(model_type):
 
     print("Starting training...")
     best_val_loss = float("inf")
+    train_losses, val_losses = [], []
 
     for epoch in range(1, NUM_EPOCHS + 1):
         start = time.time()
         train_loss = train_epoch(model, train_loader, optimizer, criterion, vocab.pad_idx())
         val_loss = evaluate(model, val_loader, criterion, vocab.pad_idx())
         elapsed = time.time() - start
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
 
         print(
             f"Epoch {epoch:02d} | "
@@ -246,6 +271,19 @@ def main(model_type):
             print("  -> Saved new best model.")
 
     print("Training complete.")
+
+    print("Creating learning curve plots...")
+    fig, ax = plt.subplots()
+    epochs = range(1, len(train_losses) + 1)
+    ax.plot(epochs, train_losses, label="Train Loss")
+    ax.plot(epochs, val_losses, label="Val Loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training and Validation Loss")
+    ax.legend()
+    fig.tight_layout()
+    plt.savefig(f"{path[:-3]}_learning_curves.png")
+    print(f"Saved learning curves to {path[:-3]}_learning_curves.png.")
 
 def load_model_for_inference(checkpoint_path, model_type):
     ckpt = torch.load(checkpoint_path, map_location=DEVICE)
@@ -293,17 +331,14 @@ def chat(model, vocab, max_new_tokens= 50):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "1":
-        model_type = 1
-    else:
-        model_type = 0
-    # Train the GPT-style LM
-    # main(model_type)
+    mode = sys.argv[1].lower() if len(sys.argv) > 1 else "chat"
+    model_type = 1 if len(sys.argv) > 2 and sys.argv[2] == "1" else 0
 
-    # # After training, you could do (in a separate script or REPL):
-    if model_type == 1:
-        path = "seq2seq_customer_service_bot.pt"
+    if mode == "train":
+        main(model_type)
+    elif mode == "chat":
+        path = "seq2seq_customer_service_bot.pt" if model_type == 1 else "gpt_style_customer_service_bot.pt"
+        model, vocab = load_model_for_inference(path, model_type)
+        chat(model, vocab, max_new_tokens=750)
     else:
-        path = "gpt_style_customer_service_bot.pt"
-    model, vocab = load_model_for_inference(path, model_type)
-    chat(model, vocab, max_new_tokens=750)
+        print("Usage: python customer_service_chatbot.py [chat|train] [model_type]")

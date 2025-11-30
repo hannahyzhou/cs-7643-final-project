@@ -1,6 +1,8 @@
 numpy
 pandas
+matplotlib
 torch
 # Only need torch_directml on Windows computers
 # torch_directml
 huggingface_hub
+bert_score
