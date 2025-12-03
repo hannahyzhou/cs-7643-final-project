@@ -41,37 +41,52 @@ class Seq2SeqTransformer(nn.Module):
 
         self.generator = nn.Linear(d_model, vocab_size)
 
-    def get_mask(self, seq_len, device):
-        mask = torch.triu(torch.ones(seq_len, seq_len, device=device) == 1, diagonal=1)
+    def get_tgt_mask(self, tgt_len, device):
+        """
+        Create mask for target sequence so it can't "peak" at future tokens.
+        """
+        mask = torch.triu(torch.ones(tgt_len, tgt_len, device=device) == 1, diagonal=1)
         mask = mask.float().masked_fill(mask, float("-inf"))
         return mask
 
-    def forward(self, x: torch.Tensor):
-        key_padding_mask = (x == self.pad_idx)
+    def forward(self, src: torch.Tensor, tgt: torch.Tensor):
+        """
+        src: (batch, src_len)
+        tgt: (batch, tgt_len)
+        """
+        src_key_padding_mask = (src == self.pad_idx)
+        tgt_key_padding_mask = (tgt == self.pad_idx)
 
-        x = x.transpose(0, 1)
+        # Transformer wants (seq_len, batch, d_model)
+        src = src.transpose(0, 1)  # (src_len, batch)
+        tgt = tgt.transpose(0, 1)  # (tgt_len, batch)
 
-        emb = self.pos_encoding(self.token_embedding(x) * math.sqrt(self.d_model))
+        # Embed + positional encoding
+        src_emb = self.pos_encoding(
+            self.token_embedding(src) * math.sqrt(self.d_model)
+        )  # (src_len, batch, d_model)
+        tgt_emb = self.pos_encoding(
+            self.token_embedding(tgt) * math.sqrt(self.d_model)
+        )  # (tgt_len, batch, d_model)
 
-        src = emb
-        tgt = emb
+        tgt_len = tgt_emb.size(0)
+        tgt_mask = self.get_tgt_mask(tgt_len, tgt_emb.device)
 
-        seq_len = tgt.size(0)
-        tgt_mask = self.get_mask(seq_len, tgt.device)
-
+        # Encode source
         memory = self.encoder(
-            src,
-            src_key_padding_mask=key_padding_mask,
-        )
+            src_emb,
+            src_key_padding_mask=src_key_padding_mask,
+        )  # (src_len, batch, d_model)
 
+        # Decode target, attending to encoder memory
         out = self.decoder(
-            tgt,
+            tgt_emb,
             memory,
             tgt_mask=tgt_mask,
-            tgt_key_padding_mask=key_padding_mask,
-            memory_key_padding_mask=key_padding_mask,
-        )
+            tgt_key_padding_mask=tgt_key_padding_mask,
+            memory_key_padding_mask=src_key_padding_mask,
+        )  # (tgt_len, batch, d_model)
 
-        out = out.transpose(0, 1)
-        logits = self.generator(out)
+        out = out.transpose(0, 1)  # (batch, tgt_len, d_model)
+        logits = self.generator(out)  # (batch, tgt_len, vocab_size)
         return logits
