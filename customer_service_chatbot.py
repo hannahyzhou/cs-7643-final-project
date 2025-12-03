@@ -234,14 +234,16 @@ def generate_response(model, vocab, instruction, max_new_tokens = 500):
     instr_ids = vocab.numericalize(instruction, add_bos_eos=False)
     input_ids = [vocab.bos_idx()] + instr_ids + [vocab.sep_idx()]
 
-    if len(input_ids) >= MAX_SEQ_LEN - 1:
-        input_ids = input_ids[:MAX_SEQ_LEN - 1]
+    # TODO: dont think we need
+    # if len(input_ids) >= MAX_SEQ_LEN - 1:
+    #     input_ids = input_ids[:MAX_SEQ_LEN - 1]
 
     x = torch.tensor(input_ids, dtype=torch.long, device=DEVICE).unsqueeze(0)
 
     for step in range(max_new_tokens):
-        if x.size(1) >= MAX_SEQ_LEN:
-            break
+        # TODO: dont think we need
+        # if x.size(1) >= MAX_SEQ_LEN:
+        #     break
 
         logits = model(x)
         next_token_logits = logits[0, -1, :]
@@ -262,6 +264,7 @@ def generate_response(model, vocab, instruction, max_new_tokens = 500):
 
     generated_ids = x[0].tolist()
 
+    # TODO: dont think we need
     # if vocab.sep_idx() in generated_ids:
     #     # split at <SEP> token and return only the response part
     #     sep_pos = generated_ids.index(vocab.sep_idx())
