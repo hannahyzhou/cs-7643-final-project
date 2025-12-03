@@ -129,6 +129,7 @@ def evaluate(model, dataloader, criterion, pad_idx: int):
 def generate_response(model, vocab, instruction, max_new_tokens = 500):
     model.eval()
 
+    # Tokenize instruction
     instr_ids = vocab.numericalize(instruction, add_bos_eos=False)
     input_ids = [vocab.bos_idx()] + instr_ids + [vocab.sep_idx()]
 
@@ -145,10 +146,13 @@ def generate_response(model, vocab, instruction, max_new_tokens = 500):
         next_token_logits = logits[0, -1, :]
 
         if step == 0:
+            # prevent generating EOS token right after instruction
             next_token_logits[vocab.eos_idx()] = float("-inf")
 
+        # greedily select next token with highest logit (most probable)
         next_token_id = torch.argmax(next_token_logits).item()
 
+        # append next token to input
         next_token = torch.tensor([[next_token_id]], dtype=torch.long, device=DEVICE)
         x = torch.cat([x, next_token], dim=1)
 
@@ -157,11 +161,18 @@ def generate_response(model, vocab, instruction, max_new_tokens = 500):
 
     generated_ids = x[0].tolist()
 
-    if vocab.sep_idx() in generated_ids:
-        sep_pos = generated_ids.index(vocab.sep_idx())
-        response_ids = generated_ids[sep_pos + 1:]
-    else:
-        response_ids = generated_ids[1:]
+    # if vocab.sep_idx() in generated_ids:
+    #     # split at <SEP> token and return only the response part
+    #     sep_pos = generated_ids.index(vocab.sep_idx())
+    #     response_ids = generated_ids[sep_pos + 1:]
+    # else:
+    #     # no <SEP> found, return everything after <BOS>
+    #     response_ids = generated_ids[1:]
+
+    # split at <SEP> token and return only the response part
+    sep_pos = generated_ids.index(vocab.sep_idx())
+    response_ids = generated_ids[sep_pos + 1:]
+
     text = vocab.denumericalize(response_ids)
 
     if not text.strip():
