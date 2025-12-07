@@ -18,7 +18,7 @@ def evaluate_bertscore(max_new_tokens=750):
     print(f"Loading dataset from: {data_path}")
     df = pd.read_csv(data_path)
     df = df[["instruction", "response"]].dropna().reset_index(drop=True)
-    df = df.head(int(len(df) * 0.001))
+    df = df.head(int(len(df) * 0.05))
 
     checkpoint_path = "gpt_style_customer_service_bot.pt"
 
