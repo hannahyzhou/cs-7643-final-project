@@ -12,16 +12,18 @@ from customer_service_chatbot import (
 )
 
 
-def evaluate_bertscore(checkpoint_path, model_type, max_new_tokens=750):
+def evaluate_bertscore(max_new_tokens=750):
     data_path = DATA_PATH
 
     print(f"Loading dataset from: {data_path}")
     df = pd.read_csv(data_path)
     df = df[["instruction", "response"]].dropna().reset_index(drop=True)
-    df = df.head(int(len(df) * 0.05))
+    df = df.head(int(len(df) * 0.001))
 
-    print(f"Loading model from: {checkpoint_path} (model_type={model_type})")
-    model, vocab = load_model_for_inference(checkpoint_path, model_type)
+    checkpoint_path = "gpt_style_customer_service_bot.pt"
+
+    print(f"Loading model from: {checkpoint_path}")
+    model, vocab = load_model_for_inference(checkpoint_path)
 
     print("Generating responses...")
     refs = []
@@ -54,11 +56,4 @@ def evaluate_bertscore(checkpoint_path, model_type, max_new_tokens=750):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "1":
-        path = "seq2seq_customer_service_bot.pt"
-        model_type = 1
-    else:
-        path = "gpt_style_customer_service_bot.pt"
-        model_type = 0
-
-    evaluate_bertscore(path, model_type, 750)
+    evaluate_bertscore(750)
